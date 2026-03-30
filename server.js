@@ -48,12 +48,40 @@ app.post('/classify', (req, res) => {
         return res.status(400).json({ error: 'Текст не може бути порожнім!' });
     }
 
+    // --- ПРОФЕСІЙНА ПЕРЕВІРКА НА "СМІТТЯ" ТА СПАМ (Виправлення БАГУ №1) ---
+    // 1. Захист від "залипання" клавіш (якщо користувач ввів "ааааа" або "!!!!")
+    if (/(.)\1{3,}/.test(textToClassify)) {
+        writeLog('Виявлено спам-символи (залипання клавіш)', 'WARNING');
+        return res.status(400).json({ error: 'екст містить неприродне повторення символів. Це не документ!' });
+    }
+
+    // 2. Перевірка на наявність реальних слів (мінімум 2 літери у слові)
+    const validWords = textToClassify.match(/[а-яА-ЯіІїЇєЄґҐa-zA-Z]{2,}/g);
+
+    // Якщо нормальних слів менше двох - відхиляємо
+    if (!validWords || validWords.length < 2) {
+        writeLog('Текст схожий на набір символів', 'WARNING');
+        return res.status(400).json({ error: 'Документ має містити хоча б два змістовних слова!' });
+    }
+    // -------------------------------------------------
+
     try {
-        const category = classifier.classify(textToClassify);
+        // Отримуємо масив ймовірностей для кожної категорії
+        const classifications = classifier.getClassifications(textToClassify);
+
+        // Якщо ймовірність найпершої категорії дорівнює ймовірності останньої - 
+        // це означає, що ШІ не розпізнав ЖОДНОГО слова і просто вгадує наосліп.
+        if (classifications[0].value === classifications[classifications.length - 1].value) {
+            writeLog('Модель не впізнала словник (можливий спам/невідомий текст)', 'WARNING');
+            return res.status(400).json({ error: 'Система не розпізнала зміст. Введіть коректний службовий текст!' });
+        }
+
+        // Беремо категорію з найвищим балом (першу в списку)
+        const category = classifications[0].label;
+
         writeLog(`Текст успішно класифіковано як: ${category}`);
         res.json({ category: category });
     } catch (error) {
-        // Тепер, якщо буде помилка, ми точно побачимо її текст
         const errorMessage = error.message ? error.message : JSON.stringify(error);
         writeLog(`Помилка класифікації: ${errorMessage}`, 'ERROR');
         res.status(500).json({ error: 'Помилка аналізу тексту.' });
