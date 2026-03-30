@@ -1,0 +1,8 @@
+{
+    "version": "1.0.0",
+    "port": 3000,
+    "language": "uk",
+    "theme": "dark",
+    "log_file_path": "./logs/app.log",
+    "model_file_path": "./classifier_model.json"
+}
